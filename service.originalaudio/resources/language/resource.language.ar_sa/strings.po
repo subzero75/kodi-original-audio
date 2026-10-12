@@ -1,0 +1,33 @@
+# Kodi Media Center language file
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ar_SA\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "عام"
+
+msgctxt "#32001"
+msgid "Switch to original audio"
+msgstr "التبديل إلى الصوت الأصلي"
+
+msgctxt "#32002"
+msgid "Show a notification when switching"
+msgstr "إظهار إشعار عند التبديل"
+
+msgctxt "#32003"
+msgid "TMDb API key (optional)"
+msgstr "مفتاح TMDb API (اختياري)"
+
+msgctxt "#32011"
+msgid "When a movie or episode starts, select the audio track in its original language."
+msgstr "عند بدء فيلم أو حلقة، يتم اختيار مسار الصوت بلغته الأصلية."
+
+msgctxt "#32012"
+msgid "Briefly show which audio track was selected."
+msgstr "إظهار مسار الصوت الذي تم اختياره لثوانٍ."
+
+msgctxt "#32013"
+msgid "Leave empty to use Wikidata (no key needed). With a key, TMDb is asked first."
+msgstr "اتركه فارغاً لاستخدام Wikidata (بدون مفتاح). مع المفتاح يتم سؤال TMDb أولاً."
