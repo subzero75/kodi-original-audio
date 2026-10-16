@@ -31,7 +31,7 @@ Results are cached per title, so other episodes of the same show don't need anot
 ## Notes
 
 - It only acts once, when playback starts, so you can still change the audio track yourself.
-- The ids come from the add-on that plays the video. Library items and most video add-ons provide them; if an item has no ids, the add-on does nothing.
+- The ids come from the add-on that plays the video. Library items and most video add-ons provide them. When an item has none (some anime add-ons, `.strm` files), the add-on looks the show or movie up by its title instead (TMDb search with a key, else Wikidata, counting only titles that have an IMDb entry), and looks again a few times during the first minute in case another add-on adds the ids later.
 - Troubleshooting: lines starting with `[originalaudio]` in `kodi.log` show the ids, the language found and the track chosen.
 
 ## Credits

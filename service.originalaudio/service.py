@@ -37,13 +37,22 @@ def lang_name(code):
 
 # ---------------------------------------------------------------- ids of what is playing
 
+def _valid(kind, value):
+    """An id as it should look; Kodi hands back the label text itself (e.g.
+    'VideoPlayer.Property(tmdb_id)') for a property nobody set."""
+    value = str(value or '').strip()
+    if kind == 'imdb':
+        return value if value.startswith('tt') and value[2:].isdigit() else ''
+    return value if value.isdigit() else ''
+
+
 def playing_ids(player):
     ids, kind = {}, 'movie'
     try:
         tag = player.getVideoInfoTag()
         kind = tag.getMediaType() or kind
         for k in ('imdb', 'tmdb', 'tvdb'):
-            v = tag.getUniqueID(k)
+            v = _valid(k, tag.getUniqueID(k))
             if v:
                 ids[k] = v
         if not ids.get('imdb') and (tag.getIMDBNumber() or '').startswith('tt'):
@@ -52,19 +61,38 @@ def playing_ids(player):
             kind = 'episode'
     except Exception as e:
         log('no info tag: %s' % e)
+    if xbmc.getInfoLabel('VideoPlayer.TVShowTitle'):
+        kind = 'episode'
+    if not ids.get('imdb'):
+        v = _valid('imdb', xbmc.getInfoLabel('VideoPlayer.IMDBNumber'))
+        if v:
+            ids['imdb'] = v
     # Some add-ons only set these as properties
     for k, props in (('imdb', ('imdb_id', 'imdbnumber', 'tvshow.imdb_id')),
                      ('tmdb', ('tmdb_id', 'tvshow.tmdb_id')),
                      ('tvdb', ('tvdb_id', 'tvshow.tvdb_id'))):
         if not ids.get(k):
             for p in props:
-                v = xbmc.getInfoLabel('VideoPlayer.Property(%s)' % p) or xbmc.getInfoLabel('ListItem.Property(%s)' % p)
+                v = _valid(k, xbmc.getInfoLabel('VideoPlayer.Property(%s)' % p)) or \
+                    _valid(k, xbmc.getInfoLabel('ListItem.Property(%s)' % p))
                 if v:
                     ids[k] = v
                     break
-    if ids.get('imdb') and not str(ids['imdb']).startswith('tt'):
-        ids.pop('imdb')
     return ids, kind
+
+
+def playing_title(kind):
+    """(title, year) of the show or movie, for a lookup by name when no add-on gave ids
+    (e.g. anime add-ons, .strm files). The show's title for an episode."""
+    title = xbmc.getInfoLabel('VideoPlayer.TVShowTitle') if kind == 'episode' else ''
+    title = title or xbmc.getInfoLabel('VideoPlayer.OriginalTitle') or xbmc.getInfoLabel('VideoPlayer.Title')
+    year = xbmc.getInfoLabel('VideoPlayer.Year')
+    if kind == 'episode':
+        year = ''  # an episode's year is not the year the show started
+    title = (title or '').strip()
+    if '://' in title or title.lower().endswith(('.mkv', '.mp4', '.avi', '.ts', '.strm')):
+        return '', ''  # a file name, not a title
+    return title, year if year.isdigit() else ''
 
 
 # ---------------------------------------------------------------- original language lookup
@@ -84,6 +112,39 @@ def from_tmdb(ids, kind, key):
         for r in d.get('tv_episode_results', []):
             return [get_json(base + 'tv/%s?api_key=%s' % (r['show_id'], key)).get('original_language')]
     return []
+
+
+def tmdb_by_title(title, year, kind, key):
+    tv = kind in ('episode', 'tvshow', 'season')
+    url = 'https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s' % (
+        'tv' if tv else 'movie', key, quote(title))
+    if year:
+        url += '&%s=%s' % ('first_air_date_year' if tv else 'year', year)
+    results = get_json(url).get('results') or []
+    return [results[0].get('original_language')] if results else []
+
+
+def wikidata_by_title(title, year, kind):
+    """Original language of the best known film or series with this name. Only items with an
+    IMDb id count, so a book or a person with the same name is not taken."""
+    found = get_json('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&'
+                     'language=en&type=item&limit=7&search=' + quote(title)).get('search') or []
+    qids = ' '.join('wd:%s' % f['id'] for f in found if f.get('id'))
+    if not qids:
+        return []
+    q = ('SELECT ?i ?c ?d WHERE { VALUES ?i { %s } ?i wdt:P345 ?imdb . ?i wdt:P364 ?l . '
+         '?l wdt:P218 ?c . OPTIONAL { ?i wdt:P577|wdt:P580 ?d } }') % qids
+    rows = get_json('https://query.wikidata.org/sparql?format=json&query=' + quote(q),
+                    timeout=12).get('results', {}).get('bindings', [])
+    order = [f['id'] for f in found]
+    best = []
+    for r in rows:
+        qid = r['i']['value'].rsplit('/', 1)[-1]
+        y = (r.get('d', {}).get('value') or '')[:4]
+        score = (bool(year) and y != year, order.index(qid) if qid in order else 99)
+        best.append((score, r['c']['value']))
+    best.sort()
+    return [best[0][1]] if best else []
 
 
 def from_wikidata(ids, kind):
@@ -122,16 +183,24 @@ def save_cache(cache):
         log('cache not saved: %s' % e, xbmc.LOGWARNING)
 
 
-def original_languages(ids, kind):
-    key = '|'.join('%s=%s' % kv for kv in sorted(ids.items()))
+def original_languages(ids, kind, title='', year=''):
+    if ids:
+        key = '|'.join('%s=%s' % kv for kv in sorted(ids.items()))
+    else:
+        key = 'title=%s|year=%s|%s' % (title.lower(), year, kind)
     cache = load_cache()
     hit = cache.get(key)
     if hit and time.time() - hit.get('t', 0) < CACHE_DAYS * 86400:
         return hit['langs']
     langs = []
     api_key = addon().getSettingString('tmdb_key').strip()
-    sources = ([('TMDb', lambda: from_tmdb(ids, kind, api_key))] if api_key else []) + \
-              [('Wikidata', lambda: from_wikidata(ids, kind))]
+    if ids:
+        sources = ([('TMDb', lambda: from_tmdb(ids, kind, api_key))] if api_key else []) + \
+                  [('Wikidata', lambda: from_wikidata(ids, kind))]
+    else:
+        sources = ([('TMDb title search', lambda: tmdb_by_title(title, year, kind, api_key))]
+                   if api_key else []) + \
+                  [('Wikidata title search', lambda: wikidata_by_title(title, year, kind))]
     for name, fn in sources:
         try:
             langs = [l for l in fn() if l]
@@ -179,10 +248,12 @@ class Player(xbmc.Player):
     def __init__(self):
         super().__init__()
         self.pending = 0
+        self.tries = 0
 
     def onAVStarted(self):
         if self.isPlayingVideo() and addon().getSettingBool('enabled'):
             self.pending = time.time()
+            self.tries = 0
 
 
 def handle(player):
@@ -190,12 +261,15 @@ def handle(player):
     streams, current = audio_streams()
     if len(streams) < 2:
         return  # nothing to choose from
-    log('playing %s %s, %d audio tracks, current: %s' % (kind, ids, len(streams), current.get('language')))
-    langs = original_languages(ids, kind) if ids else []
+    title, year = ('', '') if ids else playing_title(kind)
+    log('playing %s %s, %d audio tracks, current: %s' % (
+        kind, ids or 'no ids, title "%s"' % title, len(streams), current.get('language')))
+    langs = original_languages(ids, kind, title, year) if (ids or title) else []
     best, why = choose(streams, langs)
     if not best:
         log('no matching track for %s' % langs)
-        return
+        return not langs  # nothing known yet: worth another try
+
     if best.get('index') == current.get('index'):
         log('already on original audio (%s)' % why)
         return
@@ -220,9 +294,15 @@ def run():
         if player.pending and time.time() - player.pending > 1:
             player.pending = 0
             try:
-                handle(player)
+                again = handle(player)
             except Exception as e:
                 log('failed: %s' % e, xbmc.LOGWARNING)
+                again = True
+            # Other add-ons may give the video its ids a bit later (or the network was slow):
+            # look again a few times while it plays
+            if again and player.tries < 3 and player.isPlayingVideo():
+                player.tries += 1
+                player.pending = time.time() + 15
 
 
 run()
