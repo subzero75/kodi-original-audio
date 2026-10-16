@@ -13,6 +13,11 @@
           <default>true</default>
           <control type="toggle"/>
         </setting>
+        <setting id="hold_start" type="boolean" label="32004" help="32014">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
         <setting id="tmdb_key" type="string" label="32003" help="32013">
           <level>0</level>
           <default></default>

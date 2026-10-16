@@ -2,6 +2,7 @@ import json, os, time
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 import xbmc, xbmcaddon, xbmcgui, xbmcvfs
+from resources.lib import hold
 
 ADDON_ID = 'service.originalaudio'
 UA = 'Kodi-OriginalAudio/1.0 (https://github.com/subzero75/kodi-original-audio)'
@@ -11,6 +12,13 @@ CACHE_DAYS = 60
 
 def addon():
     return xbmcaddon.Addon(ADDON_ID)
+
+
+def setting_on(key):
+    try:
+        return addon().getSettingBool(key)
+    except Exception:
+        return False
 
 
 def log(msg, level=xbmc.LOGINFO):
@@ -249,11 +257,23 @@ class Player(xbmc.Player):
         super().__init__()
         self.pending = 0
         self.tries = 0
+        self.holding = False
 
     def onAVStarted(self):
         if self.isPlayingVideo() and addon().getSettingBool('enabled'):
             self.pending = time.time()
             self.tries = 0
+            if setting_on('hold_start'):
+                # Optional: keep the video paused at its start until the track is chosen;
+                # Subtitle Cycler can hold it at the same time for the subtitle
+                hold.start('Original Audio', 15)
+                self.holding = True
+
+    def onPlayBackStopped(self):
+        hold.stopped()
+
+    def onPlayBackEnded(self):
+        hold.stopped()
 
 
 def handle(player):
@@ -303,6 +323,11 @@ def run():
             if again and player.tries < 3 and player.isPlayingVideo():
                 player.tries += 1
                 player.pending = time.time() + 15
+            if player.holding:
+                # later tries happen while the video plays: let it go after the first one
+                player.holding = False
+                hold.release('Original Audio')
+        hold.check()
 
 
 run()

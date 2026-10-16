@@ -41,3 +41,7 @@ Written with help from Claude (Anthropic).
 ## License
 
 MIT
+
+## Pause at the start (experimental, off by default)
+
+With *Pause the video at its start until the audio track is chosen* on, the video waits at its first frame while the original language is looked up and the track is switched (at most 15 seconds), then plays. Subtitle Cycler has the same option for subtitles; with both on, the video plays when both are done. A video you play or pause yourself is left alone.

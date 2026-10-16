@@ -31,3 +31,11 @@ msgstr ""
 msgctxt "#32013"
 msgid "Leave empty to use Wikidata (no key needed). With a key, TMDb is asked first."
 msgstr ""
+
+msgctxt "#32004"
+msgid "Pause the video at its start until the audio track is chosen"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Experimental. The video waits at its first frame while the original language is looked up and the track is switched (at most 15 seconds), then plays. If Subtitle Cycler has the same option on, the video also waits for the subtitle. A video you play or pause yourself is left alone."
+msgstr ""
